@@ -1,19 +1,25 @@
-# Cloudflare Tunnel + Wildcard Subdomain + Caddy Dynamic Port Proxy
+# Cloudflare Tunnel + Wildcard Subdomain + Caddy (Secure Dynamic Port Proxy)
 
 ## Goal
 
-Expose **unlimited local ports** using a wildcard subdomain and automatically map the **subdomain port → localhost port**.
+Expose selected local development ports using a wildcard subdomain while **preventing sensitive ports from being exposed**.
 
 Example:
 
 ```
 3000.local.canngo.uk → localhost:3000
 3004.local.canngo.uk → localhost:3004
-6060.local.canngo.uk → localhost:6060
 5173.local.canngo.uk → localhost:5173
 ```
 
-You can run **any new port** without changing configuration.
+Blocked example:
+
+```
+5432.local.canngo.uk → ❌ blocked
+6379.local.canngo.uk → ❌ blocked
+```
+
+This prevents accidental exposure of databases or internal services.
 
 ---
 
@@ -28,7 +34,7 @@ Cloudflare Tunnel
    ↓
 localhost:8080 (Caddy reverse proxy)
    ↓
-Caddy extracts port from subdomain
+Caddy validates allowed ports
    ↓
 proxy → localhost:<port>
 ```
@@ -37,7 +43,7 @@ proxy → localhost:<port>
 
 # 1. Add Domain to Cloudflare
 
-If `canngo.uk` is not already managed by Cloudflare:
+If `canngo.uk` is not yet managed by Cloudflare:
 
 1. Create a Cloudflare account
 2. Add domain **canngo.uk**
@@ -47,7 +53,7 @@ Wait until the domain status becomes **Active**.
 
 ---
 
-# 2. Install Cloudflare Tunnel (cloudflared)
+# 2. Install Cloudflare Tunnel
 
 ### Mac
 
@@ -79,7 +85,7 @@ cloudflared tunnel login
 
 Your browser will open.
 
-Authorize access to the domain:
+Authorize access to:
 
 ```
 canngo.uk
@@ -89,9 +95,9 @@ A credential file will be created locally.
 
 ---
 
-# 4. Create a Tunnel
+# 4. Create Tunnel
 
-Create a named tunnel:
+Create a tunnel:
 
 ```bash
 cloudflared tunnel create dev-tunnel
@@ -100,28 +106,26 @@ cloudflared tunnel create dev-tunnel
 Example output:
 
 ```
-Tunnel ID: 12345678-abcd-1234-abcd-1234567890ab
+Tunnel ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 Credentials file:
-/Users/can/.cloudflared/12345678-abcd-1234-abcd-1234567890ab.json
+~/.cloudflared/xxxxxxxx-xxxx.json
 ```
 
 ---
 
-# 5. Route Wildcard DNS to Tunnel
+# 5. Create Wildcard DNS Route
 
-Create a wildcard DNS route:
+Run:
 
 ```bash
 cloudflared tunnel route dns dev-tunnel "*.local.canngo.uk"
 ```
 
-This automatically creates a DNS record in Cloudflare:
+Cloudflare will automatically create a DNS record:
 
 ```
 *.local.canngo.uk → tunnel
 ```
-
-Now any subdomain under `local.canngo.uk` will go to the tunnel.
 
 ---
 
@@ -139,7 +143,7 @@ brew install caddy
 sudo apt install caddy
 ```
 
-Verify:
+Verify installation:
 
 ```bash
 caddy version
@@ -160,22 +164,41 @@ Example configuration:
 ```
 *.local.canngo.uk:8080 {
 
-    @port host_regexp port ^(?P<port>\d+)\.local\.canngo\.uk$
+    @allowed host_regexp port ^(?P<port>(3000|3004|5173|6006|6060))\.local\.canngo\.uk$
 
-    reverse_proxy @port localhost:{re.port}
+    reverse_proxy @allowed localhost:{re.port}
+
+    respond "Port not allowed" 403
 
 }
 ```
 
-Explanation:
+### Explanation
+
+Allowed ports:
 
 ```
-3000.local.canngo.uk
-   ↓
-extract port = 3000
-   ↓
-proxy to localhost:3000
+3000
+3004
+5173
+6006
+6060
 ```
+
+Behavior:
+
+| URL                  | Result                    |
+| -------------------- | ------------------------- |
+| 3000.local.canngo.uk | proxied to localhost:3000 |
+| 5173.local.canngo.uk | proxied to localhost:5173 |
+| 5432.local.canngo.uk | blocked (403)             |
+
+This prevents accidental exposure of:
+
+* PostgreSQL (5432)
+* Redis (6379)
+* MongoDB (27017)
+* SSH (22)
 
 ---
 
@@ -187,7 +210,7 @@ Run:
 caddy run --config ~/Caddyfile
 ```
 
-Caddy will start listening on:
+Caddy will listen on:
 
 ```
 localhost:8080
@@ -207,19 +230,13 @@ Example:
 
 ```yaml
 tunnel: dev-tunnel
-credentials-file: /Users/can/.cloudflared/12345678-abcd-1234-abcd-1234567890ab.json
+credentials-file: /Users/your-user/.cloudflared/xxxxxxxx-xxxx.json
 
 ingress:
   - hostname: "*.local.canngo.uk"
     service: http://localhost:8080
 
   - service: http_status:404
-```
-
-This means:
-
-```
-*.local.canngo.uk → localhost:8080 (Caddy)
 ```
 
 ---
@@ -238,13 +255,13 @@ Now all traffic to:
 *.local.canngo.uk
 ```
 
-is forwarded to **Caddy**.
+will route to Caddy.
 
 ---
 
 # 11. Test
 
-Start any local server.
+Start a local server.
 
 Example Express server:
 
@@ -258,7 +275,7 @@ Open browser:
 https://3000.local.canngo.uk
 ```
 
-It will route to:
+Expected result:
 
 ```
 localhost:3000
@@ -266,29 +283,27 @@ localhost:3000
 
 ---
 
-# 12. Example Development Ports
+# 12. Example Development Services
 
 | Service   | Local Port | URL                          |
 | --------- | ---------- | ---------------------------- |
 | API       | 3000       | https://3000.local.canngo.uk |
 | Admin     | 3004       | https://3004.local.canngo.uk |
-| Vite      | 5173       | https://5173.local.canngo.uk |
+| Vite Dev  | 5173       | https://5173.local.canngo.uk |
 | Storybook | 6006       | https://6006.local.canngo.uk |
 | Worker    | 6060       | https://6060.local.canngo.uk |
-
-No configuration changes required when adding new ports.
 
 ---
 
 # 13. Auto Start Tunnel (Optional)
 
-### Option 1 — Install as system service
+Install tunnel as a system service:
 
 ```
 cloudflared service install
 ```
 
-### Option 2 — Use PM2
+Or use PM2:
 
 ```
 pm2 start "cloudflared tunnel run dev-tunnel" --name tunnel
@@ -298,15 +313,26 @@ pm2 startup
 
 ---
 
+# 14. Optional Security (Recommended)
+
+You may optionally enable **Cloudflare Zero Trust Access** to require login before accessing dev services.
+
+Example:
+
+```
+Google login required
+GitHub login required
+```
+
+This prevents unauthorized users from accessing your development environment.
+
+---
+
 # Result
 
-You now have a **dynamic local development gateway**:
+You now have a **secure dynamic development gateway**.
 
-```
-any-port.local.canngo.uk → localhost:any-port
-```
-
-Examples:
+Example:
 
 ```
 3000.local.canngo.uk → localhost:3000
@@ -314,10 +340,12 @@ Examples:
 6006.local.canngo.uk → localhost:6006
 ```
 
-This setup works perfectly for:
+Ports not explicitly allowed will be blocked automatically.
 
-* Express / NestJS
-* Vite / Next.js
+This setup works well for:
+
+* Express / NestJS APIs
+* React / Vite dev servers
 * Storybook
 * Webhook testing (Stripe, Shopify, GitHub)
 * Microservice local development
