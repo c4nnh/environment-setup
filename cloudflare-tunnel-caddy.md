@@ -165,7 +165,7 @@ Example configuration:
 *.local.canngo.uk:8080 {
 
     # Allowed development ports
-    @allowed host_regexp port ^(?P<port>(3000|3004|5173|6006|6060))\.local\.canngo\.uk$
+    @allowed header_regexp port Host ^(?P<port>(3000|3004|5173|6006|6060))\.local\.canngo\.uk$
 
     reverse_proxy @allowed localhost:{re.port}
 
