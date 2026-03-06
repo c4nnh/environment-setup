@@ -162,7 +162,7 @@ Create a file:
 Example configuration:
 
 ```
-*.local.canngo.uk:8080 {
+:8080 {
 
     # Allowed development ports
     @allowed header_regexp port Host ^(?P<port>(3000|3004|5173|6006|6060))\.local\.canngo\.uk$
