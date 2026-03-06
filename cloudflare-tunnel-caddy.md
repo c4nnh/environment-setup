@@ -399,20 +399,105 @@ https://local-4000.canngo.us
 
 ---
 
-# 14. Auto Start Tunnel (Optional)
+# 14. Auto Start Tunnel and Caddy (Optional)
 
-Install tunnel as a system service:
+You can keep both **Caddy** and **Cloudflare Tunnel** running automatically so that your dev hostnames work without manual steps.
 
+## 14.1 Caddy as a background service (macOS, Homebrew)
+
+If you installed Caddy via Homebrew:
+
+```bash
+brew services start caddy     # start at login and run in background
+brew services list            # confirm caddy is running
 ```
+
+To stop:
+
+```bash
+brew services stop caddy
+```
+
+If `brew services list` shows `caddy error 1`, it usually means the Homebrew service is using a different (or invalid) Caddyfile. Copy your working `~/Caddyfile` to the Homebrew etc directory and restart:
+
+```bash
+cp ~/Caddyfile "$(brew --prefix)/etc/Caddyfile"
+brew services restart caddy
+brew services list
+```
+
+If it still fails, check the service log:
+
+```bash
+tail -n 50 ~/Library/Logs/homebrew.mxcl.caddy.log
+```
+
+## 14.2 Cloudflared as a background service
+
+### Option A – Official service
+
+Install the tunnel as a system service:
+
+```bash
 cloudflared service install
 ```
 
-Or use PM2:
+Cloudflared will automatically run `cloudflared tunnel run local-tunnel` in the background.
 
+If you previously tried to manage `cloudflared` with Homebrew and see:
+
+```bash
+brew services list
+# ...
+cloudflared error 1
 ```
-pm2 start "cloudflared tunnel run local-tunnel" --name tunnel
+
+then stop the Homebrew service and let the official service own it:
+
+```bash
+brew services stop cloudflared
+```
+
+After that, `cloudflared` will not appear as `started` in `brew services list`, but it will still run in the background via `cloudflared service install`.
+
+### Option B – PM2 (Node-based process manager)
+
+If you already use Node tooling, you can manage the tunnel via PM2:
+
+```bash
+pm2 start "cloudflared tunnel run local-tunnel" --name local-tunnel
 pm2 save
 pm2 startup
+```
+
+This will restart the tunnel automatically after reboot.
+
+## 14.3 Dev script: start tunnel + Caddy + app together
+
+If you prefer to start everything only when you run your app, create a small script, for example:
+
+```bash
+#!/usr/bin/env bash
+
+# Start Caddy if it is not running
+if ! pgrep -x "caddy" > /dev/null; then
+  caddy run --config "$HOME/Caddyfile" &
+fi
+
+# Start Cloudflare tunnel if it is not running
+if ! pgrep -x "cloudflared" > 0; then
+  cloudflared tunnel run local-tunnel &
+fi
+
+# Finally start your app (example: Express on port 3004)
+PORT=3004 node app.js
+```
+
+Make it executable and run:
+
+```bash
+chmod +x dev.sh
+./dev.sh
 ```
 
 ---
