@@ -164,6 +164,7 @@ Example configuration:
 ```
 *.local.canngo.uk:8080 {
 
+    # Allowed development ports
     @allowed host_regexp port ^(?P<port>(3000|3004|5173|6006|6060))\.local\.canngo\.uk$
 
     reverse_proxy @allowed localhost:{re.port}
@@ -295,7 +296,45 @@ localhost:3000
 
 ---
 
-# 13. Auto Start Tunnel (Optional)
+# 13. Add a New Allowed Port
+
+If you want to expose a **new development port**, edit the Caddyfile.
+
+Example: allow **port 4000**
+
+Open config:
+
+```
+nano ~/Caddyfile
+```
+
+Find this line:
+
+```
+@allowed host_regexp port ^(?P<port>(3000|3004|5173|6006|6060))\.local\.canngo\.uk$
+```
+
+Add the new port:
+
+```
+@allowed host_regexp port ^(?P<port>(3000|3004|4000|5173|6006|6060))\.local\.canngo\.uk$
+```
+
+Save file and reload Caddy:
+
+```
+caddy reload --config ~/Caddyfile
+```
+
+Now this will work:
+
+```
+https://4000.local.canngo.uk
+```
+
+---
+
+# 14. Auto Start Tunnel (Optional)
 
 Install tunnel as a system service:
 
@@ -313,7 +352,7 @@ pm2 startup
 
 ---
 
-# 14. Optional Security (Recommended)
+# 15. Optional Security (Recommended)
 
 You may optionally enable **Cloudflare Zero Trust Access** to require login before accessing dev services.
 
@@ -349,3 +388,5 @@ This setup works well for:
 * Storybook
 * Webhook testing (Stripe, Shopify, GitHub)
 * Microservice local development
+
+---
