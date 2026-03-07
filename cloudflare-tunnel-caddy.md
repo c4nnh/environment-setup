@@ -69,6 +69,42 @@ proxy → localhost:<port>
 
 ---
 
+# Alternative: Tunnel Without Caddy
+
+**You do not need Caddy.** Cloudflare Tunnel can map each subdomain to a port by listing multiple ingress rules. One hostname → one service URL.
+
+### Tunnel-only config example
+
+```yaml
+# ~/.cloudflared/config.yml
+tunnel: local-tunnel
+credentials-file: /Users/your-user/.cloudflared/xxxxxxxx-xxxx.json
+
+ingress:
+  - hostname: "*.canngo.us"
+    service: http://localhost:8080
+
+  - service: http_status:404
+```
+
+- Any hostname you **do not** list (e.g. `local-5432.canngo.us`) hits the last rule and returns 404 — so you still only expose what you define.
+- No Caddy process; only `cloudflared` runs.
+- To add a new port: add one ingress block and restart (or reload) the tunnel.
+
+### Trade-offs
+
+|                         | With Caddy                                        | Tunnel only                                                                         |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Add new port**        | Edit Caddyfile, `caddy reload`                    | Edit config.yml, add ingress rule, restart tunnel                                   |
+| **Cache / stale files** | Caddy sends `Cache-Control` + `CDN-Cache-Control` | Rely on Cloudflare Cache Rules (e.g. bypass for `local-*.canngo.us`) or app headers |
+| **Invalid host header** | Caddy rewrites `Host` → `localhost:<port>`        | Fix per app (e.g. webpack `allowedHosts`)                                           |
+| **Extra process**       | Caddy + cloudflared                               | Only cloudflared                                                                    |
+| **Port whitelist**      | Single place in Caddyfile                         | Implicit: only listed hostnames work                                                |
+
+Use **Tunnel only** if you want the simplest stack and are fine editing the tunnel config when adding ports. Use **Caddy** if you want one wildcard rule, central cache/header control, and Host rewriting so all dev servers work without per-app config.
+
+---
+
 # 1. Add Domain to Cloudflare
 
 If `canngo.us` is not yet managed by Cloudflare:
@@ -193,18 +229,18 @@ Example configuration:
 :8080 {
     map {http.request.host} {backend_port} {
         local-3004.canngo.us 3004
-        local-3005.canngo.us 3005
-        local-3006.canngo.us 3006
-        local-3007.canngo.us 3007
+        local-3008.canngo.us 3008
+        local-3002.canngo.us 3002
+        local-3001.canngo.us 3001
+        local-3009.canngo.us 3009
         default ""
     }
 
     @allowed expression `{backend_port} != ""`
 
     handle @allowed {
-        reverse_proxy localhost:{backend_port} {
-            header_up Host localhost:{backend_port}
-        }
+        reverse_proxy localhost:{backend_port}
+
         header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
         header CDN-Cache-Control "no-store"
     }
@@ -213,6 +249,7 @@ Example configuration:
         respond "Port not allowed" 403
     }
 }
+
 ```
 
 ### What `header_up` and cache headers do
