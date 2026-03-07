@@ -202,7 +202,11 @@ Example configuration:
     @allowed expression `{backend_port} != ""`
 
     handle @allowed {
-        reverse_proxy localhost:{backend_port}
+        reverse_proxy localhost:{backend_port} {
+            header_up Host localhost:{backend_port}
+        }
+        header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        header CDN-Cache-Control "no-store"
     }
 
     handle {
@@ -210,6 +214,12 @@ Example configuration:
     }
 }
 ```
+
+### What `header_up` and cache headers do
+
+- **`header_up Host localhost:{backend_port}`** — Rewrites the `Host` header sent to the backend. Without this, the backend receives `Host: local-3004.canngo.us` which causes "Invalid host header" errors in dev servers like webpack-dev-server.
+- **`Cache-Control "no-store, ..."`** — Tells browsers not to cache responses.
+- **`CDN-Cache-Control "no-store"`** — Tells Cloudflare CDN specifically not to cache responses. Without this, Cloudflare caches static files (`.js`, `.css`, etc.) and serves stale content after rebuilds.
 
 ### Explanation
 
@@ -275,9 +285,17 @@ credentials-file: /Users/your-user/.cloudflared/xxxxxxxx-xxxx.json
 ingress:
   - hostname: "*.canngo.us"
     service: http://localhost:8080
+    originRequest:
+      noTLSVerify: true
+      disableChunkedEncoding: true
 
   - service: http_status:404
 ```
+
+### What `originRequest` options do
+
+- **`noTLSVerify: true`** — Skips TLS certificate verification when connecting to the origin (Caddy). Not strictly required when Caddy listens on plain HTTP (`:8080`), but prevents issues if you later switch to HTTPS.
+- **`disableChunkedEncoding: true`** — Disables chunked transfer encoding between the tunnel and origin. This can fix issues with certain dev servers (e.g. webpack-dev-server, HMR streams) that do not handle chunked encoding well through the tunnel.
 
 ---
 
